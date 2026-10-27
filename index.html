@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Receivable Status Fintech360 and Cashier360</title>
+<style>
+/* Theme tokens (stand-ins for the claude.ai dashboard theme) */
+:root {
+  --font-anthropic-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-anthropic-serif: Georgia, "Times New Roman", serif;
+  --color-fg: #1f1e1c; --color-fg-muted: #6b6a66; --color-bg: #faf9f6; --color-panel: #ffffff;
+  --color-border-line: #e3e1db; --color-ok: #2f7d4f; --color-warn: #b86e00; --color-bad: #c2453a;
+  --cds-chart-muted: #b9b6ae; --cds-shadow-popover: 0 4px 16px rgba(0,0,0,.12);
+  --cds-gap-xs: 4px; --cds-gap-sm: 8px; --cds-gap-md: 16px; --cds-gap-lg: 24px;
+  --cds-pad-xs: 4px; --cds-pad-sm: 8px; --cds-pad-lg: 16px;
+  --cds-font-size-caption: 12px; --cds-font-size-body: 14px; --cds-font-size-heading: 16px; --cds-font-size-title: 28px;
+  --cds-font-weight-regular: 400; --cds-font-weight-medium: 600;
+  --cds-radius: 8px; --cds-dur-slow: .25s;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-fg: #ecebe7; --color-fg-muted: #a3a19b; --color-bg: #1c1b19; --color-panel: #262522;
+    --color-border-line: #3a3935; --color-ok: #5fbf85; --color-warn: #e0a040; --color-bad: #e5736a;
+    --cds-chart-muted: #5c5a55; --cds-shadow-popover: 0 4px 16px rgba(0,0,0,.5);
+  }
+}
+html { background: var(--color-bg); }
+body { margin: 0; background: var(--color-bg); color: var(--color-fg); }
+#dash-root { max-width: 96rem; margin: 0 auto; padding: 24px 16px 48px; }
+.dash-skeleton { color: transparent !important; background: var(--color-border-line); border-radius: 4px; animation: dash-pulse 1.2s ease-in-out infinite; }
+@keyframes dash-pulse { 50% { opacity: .5; } }
+</style>
+<script src="vendor/d3.v7.9.0.min.js"></script>
+<script src="dash.js"></script>
+</head>
+<body>
+<div id="dash-root">
+<style>
+.lx { font-family: var(--font-anthropic-sans); color: var(--color-fg); display: grid; gap: var(--cds-gap-lg); }
+.lx-head h1 { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; }
+.lx-head p { margin: var(--cds-gap-xs) 0 0; color: var(--color-fg-muted); font-size: var(--cds-font-size-body); }
+.lx-kpis { display: grid; gap: var(--cds-gap-md); }
+.lx-krow { display: grid; grid-template-columns: 9rem repeat(3, minmax(0, 1fr)); gap: var(--cds-gap-md); align-items: stretch; }
+.lx-click { cursor: pointer; transition: box-shadow var(--cds-dur-slow); }
+.lx-click:hover, .lx-click:focus-visible { box-shadow: var(--cds-shadow-popover); outline: none; }
+.lx-click::after { content: "View invoices →"; display: block; margin-top: var(--cds-gap-xs); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+.lx-inv tfoot td { background: var(--color-panel); font-weight: var(--cds-font-weight-medium); border-bottom: none; }
+.lx-inv tfoot tr:first-child td { border-top: 2px solid var(--color-border-line); }
+.lx-inv tfoot tr.lx-ftotal td { font-weight: 700; }
+.lx-switch { display: inline-flex; gap: 0; border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); overflow: hidden; justify-self: start; }
+.lx-switch button { font: inherit; font-weight: var(--cds-font-weight-medium); padding: var(--cds-pad-sm) var(--cds-pad-lg); background: var(--color-panel); color: var(--color-fg); border: none; cursor: pointer; }
+.lx-switch button + button { border-left: 1px solid var(--color-border-line); }
+.lx-switch button[aria-selected="true"] { background: var(--color-fg); color: var(--color-bg); }
+.lx-krow-total { border-top: 2px solid var(--color-fg); padding-top: var(--cds-gap-md); margin-top: var(--cds-gap-xs); }
+.lx-krow-total .lx-rowlabel { font-weight: 700; font-size: var(--cds-font-size-title); }
+.lx-krow-total .lx-kpi { border: 2px solid var(--color-fg); }
+.lx-krow-total .lx-kpi .lx-label { font-weight: 700; color: var(--color-fg); }
+.lx .lx-krow-total .lx-kpi .lx-big { font-weight: 700; }
+.lx-rowlabel { align-self: center; font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); }
+@media (max-width: 48rem) { .lx-krow { grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); } .lx-rowlabel { grid-column: 1 / -1; } }
+.lx-kpi, .lx-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); min-width: 0; }
+.lx-kpi .lx-label { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+.lx-kpi .lx-big { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); font-variant-numeric: tabular-nums; margin-top: var(--cds-gap-xs); min-height: 1.3em; }
+.lx-card h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0; }
+.lx-note { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); margin: var(--cds-gap-xs) 0 var(--cds-gap-md); }
+.lx-scroll { overflow: auto; }
+.lx-detail .lx-scroll { max-height: 34rem; }
+.lx table { width: 100%; border-collapse: collapse; font-size: var(--cds-font-size-body); font-variant-numeric: tabular-nums; }
+.lx th, .lx td { padding: var(--cds-pad-xs) var(--cds-pad-sm); text-align: left; border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+.lx th { position: sticky; top: 0; background: var(--color-panel); font-weight: var(--cds-font-weight-medium); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); z-index: 1; }
+.lx th button { all: unset; cursor: pointer; }
+.lx th button:focus-visible { outline: 2px solid var(--color-fg); }
+.lx .lx-num { text-align: right; }
+.lx td.lx-wrap { white-space: normal; min-width: 12rem; }
+.lx-groups tbody tr { cursor: pointer; }
+.lx-small { max-width: 32rem; }
+.lx-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); gap: var(--cds-gap-md); }
+.lx-groups tbody tr:hover { background: var(--color-bg); }
+.lx-groups tbody tr.lx-on { background: var(--color-bg); box-shadow: inset 3px 0 0 var(--color-fg); }
+.lx-groups tfoot td { font-weight: var(--cds-font-weight-medium); border-bottom: none; border-top: 2px solid var(--color-border-line); }
+.lx-gname { font-weight: var(--cds-font-weight-medium); }
+.lx-bar { display: inline-block; height: 6px; border-radius: 3px; background: var(--cds-chart-muted); vertical-align: middle; margin-right: var(--cds-gap-sm); }
+.lx-hint { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+.lx-tools { display: flex; flex-wrap: wrap; gap: var(--cds-gap-sm); align-items: center; margin-bottom: var(--cds-gap-md); }
+.lx-tools select { font: inherit; font-size: var(--cds-font-size-caption); padding: var(--cds-pad-xs) var(--cds-pad-sm); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); background: var(--color-bg); color: var(--color-fg); cursor: pointer; }
+.lx-tools input { flex: 1 1 14rem; min-width: 0; font: inherit; padding: var(--cds-pad-xs) var(--cds-pad-sm); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); background: var(--color-bg); color: var(--color-fg); }
+.lx-seg { display: inline-flex; border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); overflow: hidden; }
+.lx-seg button, .lx-clear { font: inherit; font-size: var(--cds-font-size-caption); padding: var(--cds-pad-xs) var(--cds-pad-sm); background: var(--color-bg); color: var(--color-fg); border: none; cursor: pointer; }
+.lx-seg button + button { border-left: 1px solid var(--color-border-line); }
+.lx-seg button[aria-pressed="true"] { background: var(--color-fg); color: var(--color-bg); }
+.lx-clear { border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); }
+.lx-pill { display: inline-block; padding: 0 var(--cds-pad-sm); border-radius: 999px; font-size: var(--cds-font-size-caption); border: 1px solid var(--color-border-line); }
+.lx-pill.lx-out { color: var(--color-warn); }
+.lx-pill.lx-rec { color: var(--color-ok); }
+.lx-neg { color: var(--color-bad); }
+.lx-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--cds-gap-md); }
+@media (min-width: 70rem) { .lx-split { grid-template-columns: minmax(0, 3fr) minmax(16rem, 1fr); } }
+.lx-clients td { font-size: var(--cds-font-size-caption); }
+@media (max-width: 44rem) { .lx-hide-sm { display: none; } }
+[data-dash-source-state=empty] { color: transparent; }
+[data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
+.lx-fail { display: flex; align-items: center; justify-content: center; gap: var(--cds-gap-sm); color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); padding: var(--cds-pad-lg); }
+.lx-fail::before { content: ""; width: .375rem; height: .375rem; border-radius: 50%; background: var(--color-bad); }
+</style>
+
+<div class="lx">
+  <nav class="lx-switch" role="tablist" aria-label="Company">
+    <button role="tab" data-co="fintech" aria-selected="true">Fintech360</button><button role="tab" data-co="cashier" aria-selected="false">Cashier360</button><button role="tab" data-co="combined" aria-selected="false">Combined</button>
+  </nav>
+  <header class="lx-head" id="top">
+    <h1>Receivables Status of <span class="lx-coname">Fintech360</span> as at 31/10/2026</h1>
+    <p>All amounts in USD. Net balance = invoices issued − received. Click any figure or group to list its invoices.</p>
+  </header>
+
+  <section class="lx-kpis" id="totals">
+    <div class="lx-krow">
+      <div class="lx-rowlabel">Current Month<br><span style="font-weight: var(--cds-font-weight-regular, 400); font-size: var(--cds-font-size-body); color: var(--color-fg-muted)">October 2026</span></div>
+      <div class="lx-kpi lx-click" role="button" tabindex="0" data-sheet="October invoices" data-status=""><div class="lx-label">October issued</div><div class="lx-big dash-skeleton" data-source="totals" data-field="oct_issued">—</div></div>
+      <div class="lx-kpi lx-click" role="button" tabindex="0" data-sheet="October invoices" data-status="Received"><div class="lx-label">October received</div><div class="lx-big dash-skeleton" data-source="totals" data-field="oct_rec">—</div></div>
+      <div class="lx-kpi lx-click" role="button" tabindex="0" data-sheet="October invoices" data-status="Outstanding"><div class="lx-label">October outstanding</div><div class="lx-big dash-skeleton" data-source="totals" data-field="oct_out">—</div></div>
+    </div>
+    <div class="lx-krow">
+      <div class="lx-rowlabel">Previous months</div>
+      <div class="lx-kpi lx-click" role="button" tabindex="0" data-sheet="Prior invoices" data-status=""><div class="lx-label">Issued previous months</div><div class="lx-big dash-skeleton" data-source="totals" data-field="prior_issued">—</div></div>
+      <div class="lx-kpi lx-click" role="button" tabindex="0" data-sheet="Prior invoices" data-status="Received"><div class="lx-label">Received in October for previous months</div><div class="lx-big dash-skeleton" data-source="totals" data-field="prior_rec_oct">—</div></div>
+      <div class="lx-kpi lx-click" role="button" tabindex="0" data-sheet="Prior invoices" data-status="Outstanding"><div class="lx-label">Outstanding previous months</div><div class="lx-big dash-skeleton" data-source="totals" data-field="prior_out">—</div></div>
+    </div>
+    <div class="lx-krow lx-krow-total">
+      <div class="lx-rowlabel">Aggregated</div>
+      <div class="lx-kpi lx-click" role="button" tabindex="0" data-sheet="" data-status=""><div class="lx-label">Aggregate issued</div><div class="lx-big dash-skeleton" data-source="totals" data-field="issued">—</div></div>
+      <div class="lx-kpi lx-click" role="button" tabindex="0" data-sheet="" data-status="Received"><div class="lx-label">Aggregated received in October</div><div class="lx-big dash-skeleton" data-source="totals" data-field="received">—</div></div>
+      <div class="lx-kpi lx-click" role="button" tabindex="0" data-sheet="" data-status="Outstanding"><div class="lx-label">Aggregate outstanding</div><div class="lx-big dash-skeleton" data-source="totals" data-field="outstanding">—</div></div>
+    </div>
+  </section>
+
+  <section class="lx-card lx-cosum" id="summary" hidden>
+    <h2>Summary by company</h2>
+    <p class="lx-note">Fintech360 and Cashier360 side by side. Click a company to list its invoices.</p>
+    <div class="lx-scroll">
+      <table class="lx-groups lx-cotable" data-source="co_summary" data-row-key="company">
+        <thead><tr>
+          <th data-field="company">Company</th>
+          <th data-field="oct_issued" class="lx-num lx-hide-sm">October issued</th>
+          <th data-field="oct_rec" class="lx-num lx-hide-sm">October received</th>
+          <th data-field="oct_out" class="lx-num lx-hide-sm">October outstanding</th>
+          <th data-field="prior_out" class="lx-num lx-hide-sm">Outstanding previous months</th>
+          <th data-field="issued" class="lx-num">Aggregate issued</th>
+          <th data-field="received" class="lx-num">Aggregate received</th>
+          <th data-field="outstanding" class="lx-num">Aggregate outstanding</th>
+        </tr></thead>
+        <tbody></tbody>
+        <tfoot><tr>
+          <td>Total</td>
+          <td class="lx-num lx-hide-sm" data-source="all_totals" data-field="oct_issued">—</td>
+          <td class="lx-num lx-hide-sm" data-source="all_totals" data-field="oct_rec">—</td>
+          <td class="lx-num lx-hide-sm" data-source="all_totals" data-field="oct_out">—</td>
+          <td class="lx-num lx-hide-sm" data-source="all_totals" data-field="prior_out">—</td>
+          <td class="lx-num" data-source="all_totals" data-field="issued">—</td>
+          <td class="lx-num" data-source="all_totals" data-field="received">—</td>
+          <td class="lx-num" data-source="all_totals" data-field="outstanding">—</td>
+        </tr></tfoot>
+      </table>
+    </div>
+  </section>
+
+  <section class="lx-two">
+    <div class="lx-card" id="october">
+      <h2>1. October 2026</h2>
+      <p class="lx-note">October invoices only. Click a group to see its October invoices.</p>
+      <div class="lx-scroll">
+        <table class="lx-groups lx-oct" data-source="oct_by_group" data-row-key="group" data-scope="oct">
+          <thead><tr>
+            <th data-field="group">Group</th>
+            <th data-field="issued" class="lx-num">Invoices issued</th>
+            <th data-field="received" class="lx-num">Received</th>
+            <th data-field="net" class="lx-num">Net balance</th>
+          </tr></thead>
+          <tbody></tbody>
+          <tfoot><tr>
+            <td>Grand total</td>
+            <td class="lx-num" data-source="totals" data-field="oct_issued">—</td>
+            <td class="lx-num" data-source="totals" data-field="oct_rec">—</td>
+            <td class="lx-num" data-source="totals" data-field="oct_net">—</td>
+          </tr></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="lx-card" id="aggregate">
+      <h2>2. Aggregate, incl. all previous months</h2>
+      <p class="lx-note">October plus every prior open invoice. Click a group to see all its invoices.</p>
+      <div class="lx-scroll">
+        <table class="lx-groups lx-agg" data-source="agg_by_group" data-row-key="group" data-scope="all">
+          <thead><tr>
+            <th data-field="group">Group</th>
+            <th data-field="issued" class="lx-num">Invoices issued</th>
+            <th data-field="received" class="lx-num">Received</th>
+            <th data-field="net" class="lx-num">Net balance</th>
+          </tr></thead>
+          <tbody></tbody>
+          <tfoot><tr>
+            <td>Grand total</td>
+            <td class="lx-num" data-source="totals" data-field="issued">—</td>
+            <td class="lx-num" data-source="totals" data-field="received">—</td>
+            <td class="lx-num" data-source="totals" data-field="net">—</td>
+          </tr></tfoot>
+        </table>
+      </div>
+    </div>
+  </section>
+
+
+  <section class="lx-card lx-detail" id="invoices">
+    <h2 class="lx-dtitle">All invoices</h2>
+    <p class="lx-note lx-dnote">Every invoice from both sheets. Click a group in either table to narrow the list.</p>
+    <div class="lx-tools">
+      <input class="lx-q" type="search" placeholder="Search invoice no., service, period…" aria-label="Search invoices">
+      <div class="lx-seg lx-status" role="group" aria-label="Status">
+        <button data-v="" aria-pressed="true">All</button><button data-v="Outstanding" aria-pressed="false">Outstanding</button><button data-v="Received" aria-pressed="false">Received</button>
+      </div>
+      <div class="lx-seg lx-sheet" role="group" aria-label="Sheet">
+        <button data-v="" aria-pressed="true">Both sheets</button><button data-v="October invoices" aria-pressed="false">October</button><button data-v="Prior invoices" aria-pressed="false">Prior</button>
+      </div>
+      <select class="lx-gsel" aria-label="Group"><option value="">All groups</option></select>
+      <button class="lx-clear" hidden>Show all</button>
+    </div>
+    <div class="lx-hint lx-count"></div>
+    <div class="lx-scroll">
+      <table class="lx-inv" data-source="invoices" data-row-key="id">
+        <thead><tr>
+          <th data-field="group"><button data-k="gnum">Group</button></th>
+          <th data-field="invoice"><button data-k="invoice">Invoice</button></th>
+          <th data-field="service" class="lx-hide-sm"><button data-k="service">Service</button></th>
+          <th data-field="month"><button data-k="period">Period</button></th>
+          <th data-field="amount" class="lx-num lx-hide-sm"><button data-k="amount">Amount</button></th>
+          <th data-field="currency" class="lx-hide-sm"><button data-k="currency">Cur.</button></th>
+          <th data-field="usd" class="lx-num"><button data-k="usd">USD</button></th>
+          <th data-field="status"><button data-k="status">Status</button></th>
+          <th data-field="paid_on" class="lx-hide-sm"><button data-k="paid_on">Paid on</button></th>
+          <th data-field="entity" class="lx-hide-sm"><button data-k="entity">Issued by</button></th>
+          <th data-field="sheet" class="lx-hide-sm"><button data-k="sheet">Sheet</button></th>
+        </tr></thead>
+        <tbody class="lx-ibody"></tbody>
+        <tfoot class="lx-ifoot"></tfoot>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+dash.calc('oct_by_group', {
+  inputs: ['invoices'],
+  title: 'October per group',
+  description: 'October invoices only: amount issued, received and net balance (issued − received) per group, ordered by group.',
+  fn: (invoices) => {
+    const g = {};
+    for (const r of invoices.filter((r) => r.sheet === 'October invoices')) {
+      const usd = Number(r.usd) || 0;
+      const x = g[r.group] || (g[r.group] = { group: r.group, issued: 0, received: 0 });
+      x.issued += usd;
+      if (r.status === 'Received') x.received += usd;
+    }
+    return Object.values(g).map((x) => ({ ...x, net: x.issued - x.received })).sort((a, b) => String(a.group).localeCompare(String(b.group), 'en', { numeric: true }));
+  },
+});
+
+dash.calc('agg_by_group', {
+  inputs: ['invoices'],
+  title: 'Aggregate per group',
+  description: 'October and all previous months: amount issued, received and net balance (issued − received) per group, ordered by group.',
+  fn: (invoices) => {
+    const g = {};
+    for (const r of invoices) {
+      const usd = Number(r.usd) || 0;
+      const x = g[r.group] || (g[r.group] = { group: r.group, issued: 0, received: 0 });
+      x.issued += usd;
+      if (r.status === 'Received') x.received += usd;
+    }
+    return Object.values(g).map((x) => ({ ...x, net: x.issued - x.received })).sort((a, b) => String(a.group).localeCompare(String(b.group), 'en', { numeric: true }));
+  },
+});
+
+dash.calc('totals', {
+  inputs: ['invoices'],
+  title: 'Grand totals',
+  description: 'Sums USD issued, received and net balance (issued − received) across all invoices and across October invoices.',
+  fn: (invoices) => {
+    const t = { prior_issued: 0, prior_out: 0, prior_rec_oct: 0, prior_rec_count: 0, oct_issued: 0, oct_out: 0, oct_rec: 0, oct_net: 0, issued: 0, outstanding: 0, received: 0, net: 0 };
+    for (const r of invoices) {
+      const usd = Number(r.usd) || 0;
+      const oct = r.sheet === 'October invoices';
+      t.issued += usd;
+      if (!oct && r.status === 'Received' && String(r.paid_on).startsWith('2026-10')) { t.prior_rec_oct += usd; t.prior_rec_count += 1; }
+      if (oct) t.oct_issued += usd;
+      if (r.status === 'Received') { t.received += usd; if (oct) t.oct_rec += usd; }
+      else { t.outstanding += usd; if (oct) t.oct_out += usd; else t.prior_out += usd; }
+    }
+    t.net = t.issued - t.received;
+    t.oct_net = t.oct_issued - t.oct_rec;
+    t.prior_issued = t.issued - t.oct_issued;
+    return [t];
+  },
+});
+
+dash.calc('all_oct_by_group', {
+  inputs: ['invoices', 'cashier_invoices'],
+  title: 'Combined – October per group',
+  description: 'October invoices only: amount issued, received and net balance (issued − received) per group, ordered by group.',
+  fn: (fin, cas) => {
+    const invoices = [...fin, ...cas];
+    const g = {};
+    for (const r of invoices.filter((r) => r.sheet === 'October invoices')) {
+      const usd = Number(r.usd) || 0;
+      const x = g[r.group] || (g[r.group] = { group: r.group, issued: 0, received: 0 });
+      x.issued += usd;
+      if (r.status === 'Received') x.received += usd;
+    }
+    return Object.values(g).map((x) => ({ ...x, net: x.issued - x.received })).sort((a, b) => String(a.group).localeCompare(String(b.group), 'en', { numeric: true }));
+  },
+});
+
+dash.calc('all_agg_by_group', {
+  inputs: ['invoices', 'cashier_invoices'],
+  title: 'Combined – aggregate per group',
+  description: 'October and all previous months: amount issued, received and net balance (issued − received) per group, ordered by group.',
+  fn: (fin, cas) => {
+    const invoices = [...fin, ...cas];
+    const g = {};
+    for (const r of invoices) {
+      const usd = Number(r.usd) || 0;
+      const x = g[r.group] || (g[r.group] = { group: r.group, issued: 0, received: 0 });
+      x.issued += usd;
+      if (r.status === 'Received') x.received += usd;
+    }
+    return Object.values(g).map((x) => ({ ...x, net: x.issued - x.received })).sort((a, b) => String(a.group).localeCompare(String(b.group), 'en', { numeric: true }));
+  },
+});
+
+dash.calc('all_totals', {
+  inputs: ['invoices', 'cashier_invoices'],
+  title: 'Combined – grand totals',
+  description: 'Sums USD issued, received and net balance (issued − received) across all invoices and across October invoices.',
+  fn: (fin, cas) => {
+    const invoices = [...fin, ...cas];
+    const t = { prior_issued: 0, prior_out: 0, prior_rec_oct: 0, prior_rec_count: 0, oct_issued: 0, oct_out: 0, oct_rec: 0, oct_net: 0, issued: 0, outstanding: 0, received: 0, net: 0 };
+    for (const r of invoices) {
+      const usd = Number(r.usd) || 0;
+      const oct = r.sheet === 'October invoices';
+      t.issued += usd;
+      if (!oct && r.status === 'Received' && String(r.paid_on).startsWith('2026-10')) { t.prior_rec_oct += usd; t.prior_rec_count += 1; }
+      if (oct) t.oct_issued += usd;
+      if (r.status === 'Received') { t.received += usd; if (oct) t.oct_rec += usd; }
+      else { t.outstanding += usd; if (oct) t.oct_out += usd; else t.prior_out += usd; }
+    }
+    t.net = t.issued - t.received;
+    t.oct_net = t.oct_issued - t.oct_rec;
+    t.prior_issued = t.issued - t.oct_issued;
+    return [t];
+  },
+});
+
+dash.calc('all_invoices', {
+  inputs: ['invoices', 'cashier_invoices'],
+  title: 'All invoices, both companies',
+  description: 'Fintech360 and Cashier360 invoices in one list, each tagged with its company.',
+  fn: (fin, cas) => [
+    ...fin.map((r) => ({ ...r, company: 'Fintech360' })),
+    ...cas.map((r) => ({ ...r, company: 'Cashier360' })),
+  ],
+});
+
+dash.calc('co_summary', {
+  inputs: ['invoices', 'cashier_invoices'],
+  title: 'Summary per company',
+  description: 'USD issued, received and outstanding (issued − received) for Fintech360 and Cashier360.',
+  fn: (fin, cas) => [['Fintech360', fin], ['Cashier360', cas]].map(([company, rows]) => {
+    let issued = 0, received = 0, oct_issued = 0, oct_rec = 0;
+    for (const r of rows) {
+      const usd = Number(r.usd) || 0;
+      const oct = r.sheet === 'October invoices';
+      issued += usd; if (oct) oct_issued += usd;
+      if (r.status === 'Received') { received += usd; if (oct) oct_rec += usd; }
+    }
+    return { company, oct_issued, oct_rec, oct_out: oct_issued - oct_rec, prior_out: (issued - oct_issued) - (received - oct_rec), issued, received, outstanding: issued - received };
+  }),
+});
+
+dash.calc('c_oct_by_group', {
+  inputs: ['cashier_invoices'],
+  title: 'Cashier360 – October per group',
+  description: 'October invoices only: amount issued, received and net balance (issued − received) per group, ordered by group.',
+  fn: (invoices) => {
+    const g = {};
+    for (const r of invoices.filter((r) => r.sheet === 'October invoices')) {
+      const usd = Number(r.usd) || 0;
+      const x = g[r.group] || (g[r.group] = { group: r.group, issued: 0, received: 0 });
+      x.issued += usd;
+      if (r.status === 'Received') x.received += usd;
+    }
+    return Object.values(g).map((x) => ({ ...x, net: x.issued - x.received })).sort((a, b) => String(a.group).localeCompare(String(b.group), 'en', { numeric: true }));
+  },
+});
+
+dash.calc('c_agg_by_group', {
+  inputs: ['cashier_invoices'],
+  title: 'Cashier360 – aggregate per group',
+  description: 'October and all previous months: amount issued, received and net balance (issued − received) per group, ordered by group.',
+  fn: (invoices) => {
+    const g = {};
+    for (const r of invoices) {
+      const usd = Number(r.usd) || 0;
+      const x = g[r.group] || (g[r.group] = { group: r.group, issued: 0, received: 0 });
+      x.issued += usd;
+      if (r.status === 'Received') x.received += usd;
+    }
+    return Object.values(g).map((x) => ({ ...x, net: x.issued - x.received })).sort((a, b) => String(a.group).localeCompare(String(b.group), 'en', { numeric: true }));
+  },
+});
+
+dash.calc('c_totals', {
+  inputs: ['cashier_invoices'],
+  title: 'Cashier360 – grand totals',
+  description: 'Sums USD issued, received and net balance (issued − received) across all invoices and across October invoices.',
+  fn: (invoices) => {
+    const t = { prior_issued: 0, prior_out: 0, prior_rec_oct: 0, prior_rec_count: 0, oct_issued: 0, oct_out: 0, oct_rec: 0, oct_net: 0, issued: 0, outstanding: 0, received: 0, net: 0 };
+    for (const r of invoices) {
+      const usd = Number(r.usd) || 0;
+      const oct = r.sheet === 'October invoices';
+      t.issued += usd;
+      if (!oct && r.status === 'Received' && String(r.paid_on).startsWith('2026-10')) { t.prior_rec_oct += usd; t.prior_rec_count += 1; }
+      if (oct) t.oct_issued += usd;
+      if (r.status === 'Received') { t.received += usd; if (oct) t.oct_rec += usd; }
+      else { t.outstanding += usd; if (oct) t.oct_out += usd; else t.prior_out += usd; }
+    }
+    t.net = t.issued - t.received;
+    t.oct_net = t.oct_issued - t.oct_rec;
+    t.prior_issued = t.issued - t.oct_issued;
+    return [t];
+  },
+});
+
+(() => {
+  const root = document.querySelector('.lx');
+  const usd0 = d3.format('$,.0f');
+  const usd2 = d3.format('$,.2f');
+  const num2 = d3.format(',.2f');
+  const count = d3.format(',');
+  const money = (v) => (Math.abs(v) < 0.005 ? '$0' : usd0(v));
+
+  const state = { q: '', status: '', sheet: '', scope: null, label: '', company: '', iSort: { k: 'gnum', dir: 1 } };
+  const CO = {
+    fintech: { name: 'Fintech360', invoices: 'invoices', oct: 'oct_by_group', agg: 'agg_by_group', totals: 'totals' },
+    cashier: { name: 'Cashier360', invoices: 'cashier_invoices', oct: 'c_oct_by_group', agg: 'c_agg_by_group', totals: 'c_totals' },
+    combined: { name: 'Fintech360 and Cashier360', invoices: 'all_invoices', oct: 'all_oct_by_group', agg: 'all_agg_by_group', totals: 'all_totals' },
+  };
+  const KIND = { invoices: 'invoices', oct_by_group: 'oct', agg_by_group: 'agg', totals: 'totals' };
+  root.querySelectorAll('[data-source]').forEach((el) => { if (KIND[el.dataset.source]) el.dataset.kind = KIND[el.dataset.source]; });
+  let co = CO[location.hash.slice(1)] ? location.hash.slice(1) : 'fintech';
+  const S = () => CO[co];
+  const applyCo = () => {
+    root.querySelectorAll('[data-kind]').forEach((el) => { el.dataset.source = S()[el.dataset.kind]; });
+    root.querySelector('.lx-coname').textContent = S().name;
+    root.querySelector('.lx-cosum').hidden = co !== 'combined';
+    const head = root.querySelector('.lx-inv thead tr');
+    const coTh = head.querySelector('th[data-field="company"]');
+    if (co === 'combined' && !coTh) {
+      const th = document.createElement('th'); th.dataset.field = 'company';
+      const b = document.createElement('button'); b.dataset.k = 'company'; b.textContent = 'Company'; th.appendChild(b);
+      head.insertBefore(th, head.children[1]);
+    } else if (co !== 'combined' && coTh) coTh.remove();
+    root.querySelectorAll('.lx-switch button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.co === co)));
+  };
+  applyCo();
+  const q = root.querySelector('.lx-q');
+  const clear = root.querySelector('.lx-clear');
+  const statusSeg = root.querySelector('.lx-status');
+  const sheetSeg = root.querySelector('.lx-sheet');
+
+  const cell = (tr, text, cls) => { const td = document.createElement('td'); td.textContent = text; if (cls) td.className = cls; tr.appendChild(td); return td; };
+  const cmp = (k, dir) => (a, b) => {
+    const x = a[k], y = b[k];
+    if (typeof x === 'number' || typeof y === 'number') return ((Number(x) || 0) - (Number(y) || 0)) * dir;
+    return String(x ?? '').localeCompare(String(y ?? ''), 'en', { numeric: true }) * dir;
+  };
+  const failed = (id) => ['error', 'connect'].includes(dash.data(id).status);
+  const failRow = (tbody, cols) => { const tr = document.createElement('tr'); const td = cell(tr, 'Failed to load'); td.colSpan = cols; td.className = 'lx-fail'; tbody.replaceChildren(tr); };
+  const setSeg = (seg, v) => seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
+
+  statusSeg.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; state.label = ''; state.status = b.dataset.v; setSeg(statusSeg, state.status); draw(); });
+  sheetSeg.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; state.label = ''; state.sheet = b.dataset.v; setSeg(sheetSeg, state.sheet); draw(); });
+  q.addEventListener('input', () => { state.q = q.value.trim().toLowerCase(); draw(); });
+
+  const iTable = root.querySelector('.lx-inv');
+  iTable.querySelector('thead').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const s = state.iSort;
+    if (s.k === b.dataset.k) s.dir = -s.dir; else { s.k = b.dataset.k; s.dir = ['usd', 'amount'].includes(s.k) ? -1 : 1; }
+    draw();
+  });
+
+  root.querySelectorAll('.lx-groups[data-scope]').forEach((table) => table.querySelector('tbody').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-key]'); if (!tr) return;
+    const scope = table.dataset.scope;
+    state.label = ''; state.company = '';
+    const same = dash.params().group === tr.dataset.key && state.scope === scope;
+    state.scope = same ? null : scope;
+    state.sheet = same ? '' : scope === 'oct' ? 'October invoices' : scope === 'prior_rec' ? 'Prior invoices' : '';
+    state.status = !same && scope === 'prior_rec' ? 'Received' : '';
+    setSeg(sheetSeg, state.sheet);
+    setSeg(statusSeg, state.status);
+    dash.setParams({ group: same ? null : tr.dataset.key });
+    if (!same) { document.getElementById('invoices').scrollIntoView({ behavior: 'smooth', block: 'start' }); dash.setLink('invoices'); }
+  }));
+  const openTile = (tile) => {
+    state.scope = null;
+    state.sheet = tile.dataset.sheet;
+    state.status = tile.dataset.status;
+    state.label = tile.querySelector('.lx-label').textContent;
+    state.company = '';
+    q.value = ''; state.q = '';
+    setSeg(sheetSeg, state.sheet);
+    setSeg(statusSeg, state.status);
+    if (dash.params().group) dash.setParams({ group: null }); else draw();
+    document.getElementById('invoices').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    dash.setLink('invoices');
+  };
+  root.querySelectorAll('.lx-click').forEach((tile) => {
+    tile.addEventListener('click', () => openTile(tile));
+    tile.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTile(tile); } });
+  });
+  root.querySelector('.lx-switch').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b || b.dataset.co === co) return;
+    co = b.dataset.co;
+    applyCo();
+    state.label = ''; state.company = ''; state.scope = null; state.sheet = ''; state.status = ''; state.q = ''; q.value = '';
+    setSeg(sheetSeg, ''); setSeg(statusSeg, '');
+    dash.setLink(co);
+    if (dash.params().group) dash.setParams({ group: null }); else draw();
+    document.getElementById('top').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  root.querySelector('.lx-cotable tbody').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-key]'); if (!tr) return;
+    const same = state.company === tr.dataset.key;
+    state.company = same ? '' : tr.dataset.key;
+    state.label = same ? '' : tr.dataset.key;
+    state.scope = null; state.sheet = ''; state.status = ''; setSeg(sheetSeg, ''); setSeg(statusSeg, '');
+    if (dash.params().group) dash.setParams({ group: null }); else draw();
+    if (!same) { document.getElementById('invoices').scrollIntoView({ behavior: 'smooth', block: 'start' }); dash.setLink('invoices'); }
+  });
+  const gsel = root.querySelector('.lx-gsel');
+  gsel.addEventListener('change', () => { state.scope = null; dash.setParams({ group: gsel.value || null }); });
+  clear.addEventListener('click', () => { state.label = ''; state.company = ''; state.scope = null; state.sheet = ''; state.status = ''; setSeg(sheetSeg, ''); setSeg(statusSeg, ''); dash.setParams({ group: null }); });
+
+  function drawGroups(table, id) {
+    const sel = dash.params().group || null;
+    const d = dash.data(id);
+    const body = table.querySelector('tbody');
+    if (failed(id)) { failRow(body, table.querySelectorAll('thead th').length); return; }
+    if (d.status !== 'ok') { body.replaceChildren(); return; }
+    body.replaceChildren(...d.data.map((r) => {
+      const tr = document.createElement('tr');
+      tr.dataset.key = r.group;
+      tr.tabIndex = 0;
+      const on = r.group === sel && state.scope === table.dataset.scope;
+      tr.setAttribute('aria-selected', String(on));
+      if (on) tr.className = 'lx-on';
+      tr.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tr.click(); } });
+      cell(tr, r.group, 'lx-gname');
+      if (table.dataset.scope === 'prior_rec') {
+        cell(tr, count(r.invoices), 'lx-num');
+        cell(tr, money(r.received), 'lx-num');
+      } else {
+        cell(tr, money(r.issued), 'lx-num');
+        cell(tr, money(r.received), 'lx-num');
+        cell(tr, money(r.net), 'lx-num');
+      }
+      return tr;
+    }));
+  }
+
+  function drawSummary() {
+    if (co !== 'combined') return;
+    const table = root.querySelector('.lx-cotable');
+    const body = table.querySelector('tbody');
+    const d = dash.data('co_summary');
+    if (failed('co_summary')) failRow(body, 8);
+    else if (d.status === 'ok') body.replaceChildren(...d.data.map((r) => {
+      const tr = document.createElement('tr');
+      tr.dataset.key = r.company;
+      tr.tabIndex = 0;
+      if (state.company === r.company) tr.className = 'lx-on';
+      tr.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tr.click(); } });
+      cell(tr, r.company, 'lx-gname');
+      ['oct_issued', 'oct_rec', 'oct_out', 'prior_out'].forEach((f) => cell(tr, money(r[f]), 'lx-num lx-hide-sm'));
+      ['issued', 'received', 'outstanding'].forEach((f) => cell(tr, money(r[f]), 'lx-num'));
+      return tr;
+    }));
+    else body.replaceChildren();
+    const t = dash.data('all_totals');
+    table.querySelectorAll('tfoot [data-source="all_totals"]').forEach((el) => {
+      el.textContent = t.status === 'ok' && t.data.length ? money(t.data[0][el.dataset.field]) : '—';
+    });
+  }
+
+  function draw() {
+    drawSummary();
+    const sel = dash.params().group || null;
+    if (!sel) state.scope = null;
+    clear.hidden = !sel && !state.label;
+
+    const t = dash.data(S().totals);
+    root.querySelectorAll('[data-kind="totals"]').forEach((el) => {
+      el.classList.toggle('dash-skeleton', t.status === 'loading');
+      el.textContent = t.status === 'ok' && t.data.length ? (el.dataset.field === 'prior_rec_count' ? count(t.data[0][el.dataset.field]) : money(t.data[0][el.dataset.field])) : '—';
+    });
+
+    drawGroups(root.querySelector('.lx-oct'), S().oct);
+    drawGroups(root.querySelector('.lx-agg'), S().agg);
+
+    const scopeName = state.scope === 'oct' ? ' – October' : state.scope === 'prior_rec' ? ' – previous months received in October' : '';
+    const tparts = [state.label, sel ? sel + (state.label ? '' : scopeName) : ''].filter(Boolean);
+    root.querySelector('.lx-dtitle').textContent = tparts.length ? 'Invoices – ' + tparts.join(' – ') : 'All invoices';
+    root.querySelector('.lx-dnote').textContent = !sel && state.label ? 'The invoices behind this figure. Use the toggles to change the view, or “Show all” to go back.' : sel ? 'Invoices for ' + sel + '. Use the sheet toggle to switch between October and prior months, or “Show all” to go back.' : 'Every invoice from both sheets. Click a group in either table to narrow the list.';
+
+    const inv = dash.data(S().invoices);
+    const iBody = iTable.querySelector('tbody');
+    const cnt = root.querySelector('.lx-count');
+    iTable.querySelectorAll('th').forEach((th) => { const b = th.querySelector('button'); th.setAttribute('aria-sort', b && b.dataset.k === state.iSort.k ? (state.iSort.dir > 0 ? 'ascending' : 'descending') : 'none'); });
+    if (failed(S().invoices)) { failRow(iBody, co === 'combined' ? 12 : 11); iTable.querySelector('tfoot').replaceChildren(); cnt.textContent = ''; return; }
+    if (inv.status !== 'ok') { iBody.replaceChildren(); iTable.querySelector('tfoot').replaceChildren(); cnt.textContent = ''; return; }
+    const groups = [...new Set(inv.data.map((r) => r.group))].sort((a, b) => String(a).localeCompare(String(b), 'en', { numeric: true }));
+    if ([...gsel.options].slice(1).map((o) => o.value).join('|') !== groups.join('|')) gsel.replaceChildren(new Option('All groups', ''), ...groups.map((g) => new Option(g, g)));
+    gsel.value = sel || '';
+    const inGroup = inv.data.filter((r) => !sel || r.group === sel);
+    const rows = inGroup.filter((r) =>
+      (!state.company || r.company === state.company) &&
+      (!state.status || r.status === state.status) &&
+      (!state.sheet || r.sheet === state.sheet) &&
+      (!state.q || [r.invoice, r.service, r.month, r.entity, r.group, r.company || ''].join(' ').toLowerCase().includes(state.q))
+    ).map((r) => ({ ...r, gnum: r.group }));
+    const s = state.iSort;
+    rows.sort((a, b) => cmp(s.k, s.dir)(a, b) || String(a.group).localeCompare(String(b.group), 'en', { numeric: true }) || String(a.period).localeCompare(String(b.period)));
+    cnt.textContent = 'Showing ' + count(rows.length) + ' of ' + count(inGroup.length) + ' invoices';
+    const sumOf = (list) => list.reduce((a, r) => a + (Number(r.usd) || 0), 0);
+    const outRows = rows.filter((r) => r.status !== 'Received');
+    const recRows = rows.filter((r) => r.status === 'Received');
+    const footLines = [];
+    if (recRows.length && outRows.length) footLines.push(['Received', recRows], ['Outstanding', outRows]);
+    footLines.push(['Total', rows]);
+    const foot = iTable.querySelector('tfoot');
+    foot.replaceChildren(...footLines.map(([label, list], i) => {
+      const tr = document.createElement('tr');
+      if (label === 'Total') tr.className = 'lx-ftotal';
+      cell(tr, label);
+      if (co === 'combined') cell(tr, '');
+      cell(tr, count(list.length) + (list.length === 1 ? ' invoice' : ' invoices'));
+      cell(tr, '', 'lx-hide-sm');
+      cell(tr, '');
+      cell(tr, '', 'lx-num lx-hide-sm');
+      cell(tr, '', 'lx-hide-sm');
+      const v = sumOf(list);
+      cell(tr, usd2(v), 'lx-num' + (v < 0 ? ' lx-neg' : ''));
+      for (let k = 0; k < 4; k++) cell(tr, '', k ? 'lx-hide-sm' : '');
+      return tr;
+    }));
+
+    iBody.replaceChildren(...rows.map((r) => {
+      const tr = document.createElement('tr');
+      tr.dataset.key = r.id;
+      cell(tr, r.group);
+      if (co === 'combined') cell(tr, r.company);
+      cell(tr, r.invoice);
+      cell(tr, r.service, 'lx-wrap lx-hide-sm');
+      cell(tr, r.month);
+      cell(tr, r.amount == null ? '' : num2(r.amount), 'lx-num lx-hide-sm');
+      cell(tr, r.currency, 'lx-hide-sm');
+      cell(tr, usd2(r.usd), 'lx-num' + (r.usd < 0 ? ' lx-neg' : ''));
+      const st = cell(tr, '');
+      const pill = document.createElement('span'); pill.className = 'lx-pill ' + (r.status === 'Received' ? 'lx-rec' : 'lx-out'); pill.textContent = r.status;
+      st.appendChild(pill);
+      cell(tr, r.paid_on, 'lx-hide-sm');
+      cell(tr, r.entity, 'lx-hide-sm');
+      cell(tr, r.sheet, 'lx-hide-sm');
+      return tr;
+    }));
+  }
+
+  dash.onData(draw);
+  const named = document.getElementById(location.hash.slice(1));
+  if (named) named.scrollIntoView();
+})();
+</script>
+
+</div>
+</body>
+</html>
